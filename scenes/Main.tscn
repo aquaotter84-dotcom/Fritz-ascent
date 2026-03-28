@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/FightController.gd" id="1_fc"]
+[ext_resource type="Script" path="res://scripts/DustyAI.gd" id="2_da"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_fc")
+
+[node name="Dusty" type="Node" parent="."]
+script = ExtResource("2_da")
