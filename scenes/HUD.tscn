@@ -1,0 +1,54 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8v5r5x2q3w4r"]
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TouchControls" type="GridContainer" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -200.0
+offset_right = 150.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+columns = 3
+
+[node name="BtnDodgeLeft" type="Button" parent="TouchControls"]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+text = "Dodge L"
+
+[node name="BtnDuck" type="Button" parent="TouchControls"]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+text = "Duck"
+
+[node name="BtnDodgeRight" type="Button" parent="TouchControls"]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+text = "Dodge R"
+
+[node name="BtnBlock" type="Button" parent="TouchControls"]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+text = "Block"
+
+[node name="BtnCounter" type="Button" parent="TouchControls"]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+text = "Counter"
+
+[node name="BtnStar" type="Button" parent="TouchControls"]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+text = "STAR"
