@@ -1,80 +1,112 @@
 package com.aquaotter.fritzascent.engine
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import com.aquaotter.fritzascent.model.CombatPhase
 import com.aquaotter.fritzascent.model.FightState
-import com.aquaotter.fritzascent.model.DustyPattern
+import com.aquaotter.fritzascent.model.KnockdownPhase
 
-class FightEngine {
-    private val _fightState = MutableStateFlow(FightState())
-    val fightState: StateFlow<FightState> = _fightState
+class FightEngine(private val opponentPattern: OpponentPattern) {
 
-    private val dustyAI = DustyPattern()
+    private var state: FightState = FightState()
+    private var lastTickMs: Long = System.currentTimeMillis()
 
-    fun initializeFight() {
-        _fightState.value = FightState(opponentName = "Dusty")
-        dustyAI.reset()
+    fun currentState(): FightState = state
+
+    // ─── Player input ──────────────────────────────────────────────────
+
+    fun onPlayerAction(action: PlayerAction): FightState {
+        // Block input while down or fight is over
+        if (state.knockdownState.isDown || state.fightOver) return state
+
+        state = when (action) {
+            PlayerAction.DODGE_LEFT,
+            PlayerAction.DODGE_RIGHT -> handleDodge()
+            PlayerAction.JAB         -> handleAttack(baseDamage = 8)
+            PlayerAction.BODY_BLOW   -> handleAttack(baseDamage = 14)
+            PlayerAction.STAR_PUNCH  -> handleStarPunch()
+        }
+        return state
     }
 
-    fun playerDodge(direction: String) {
-        val current = _fightState.value
-        if (current.isOpponentKO || current.playerHealth <= 0) return
+    // ─── Game loop tick ────────────────────────────────────────────────
 
-        val result = dustyAI.resolvePlayerDefense(direction)
-        
-        var nextHealth = current.playerHealth
-        var nextStars = current.stars
-        var isVulnerable = result == "safe_dodge" || result == "perfect_haymaker_dodge"
+    fun tick(nowMs: Long): FightState {
+        if (state.fightOver) return state
 
-        if (result == "perfect_haymaker_dodge") {
-            nextStars += 1
-        } else if (result == "hit") {
-            nextHealth = (current.playerHealth - 15).coerceAtLeast(0)
+        val delta = nowMs - lastTickMs
+        lastTickMs = nowMs
+
+        // 1. Advance knockdown FSM
+        state = RoundManager.tickKnockdown(state, nowMs)
+
+        // 2. KO check
+        if (state.knockdownState.phase == KnockdownPhase.KO) {
+            state = state.copy(fightOver = true, playerWon = false)
+            return state
         }
 
-        _fightState.value = current.copy(
-            playerHealth = nextHealth,
-            stars = nextStars,
-            opponentVulnerable = isVulnerable,
-            playerVulnerable = false
-        )
-        
-        if (result == "hit" || !isVulnerable) {
-            dustyAI.prepareNextAttack()
+        // 3. Round timer
+        val newTime = (state.roundTimeMs - delta).coerceAtLeast(0L)
+        state = state.copy(roundTimeMs = newTime)
+        if (newTime <= 0L) {
+            state = RoundManager.advanceRound(state)
+            if (state.fightOver) return state
+        }
+
+        // 4. Opponent AI tick
+        state = opponentPattern.tick(state, nowMs)
+
+        return state
+    }
+
+    // ─── Private helpers ───────────────────────────────────────────────
+
+    private fun handleDodge(): FightState {
+        return if (state.combatPhase == CombatPhase.EVADE) {
+            // Clean dodge: earn a star, open punish window
+            val newStars = (state.stars + 1).coerceAtMost(state.maxStars)
+            state.copy(stars = newStars, combatPhase = CombatPhase.PUNISH)
+        } else {
+            // Mistimed dodge: opponent connects
+            RoundManager.onHeavyHit(state, damageTaken = 15)
         }
     }
 
-    fun playerCounter(direction: String) {
-        val current = _fightState.value
-        if (!current.opponentVulnerable || current.isOpponentKO || current.playerHealth <= 0) return
-
-        // Hit detection & Combo logic
-        val damage = 12
-        val nextOpponentHealth = (current.opponentHealth - damage).coerceAtLeast(0)
-        
-        _fightState.value = current.copy(
-            opponentHealth = nextOpponentHealth,
-            opponentVulnerable = false,
-            isOpponentKO = nextOpponentHealth <= 0
-        )
-
-        dustyAI.prepareNextAttack()
+    private fun handleAttack(baseDamage: Int): FightState {
+        return if (state.combatPhase == CombatPhase.PUNISH) {
+            val newOppHealth = (state.opponentHealth - baseDamage).coerceAtLeast(0)
+            val next = state.copy(opponentHealth = newOppHealth, combatPhase = CombatPhase.OBSERVE)
+            if (newOppHealth <= 0) next.copy(fightOver = true, playerWon = true) else next
+        } else {
+            // Whiff - no effect
+            state
+        }
     }
 
-    fun playerStarPunch() {
-        val current = _fightState.value
-        if (current.stars <= 0 || !current.opponentVulnerable || current.isOpponentKO) return
+    private fun handleStarPunch(): FightState {
+        if (state.stars < state.maxStars) return state // Not enough stars
 
-        val damage = 35
-        val nextOpponentHealth = (current.opponentHealth - damage).coerceAtLeast(0)
-        
-        _fightState.value = current.copy(
-            stars = current.stars - 1,
-            opponentHealth = nextOpponentHealth,
-            opponentVulnerable = false,
-            isOpponentKO = nextOpponentHealth <= 0
+        val newOppHealth = (state.opponentHealth - 35).coerceAtLeast(0)
+        val next = state.copy(
+            opponentHealth = newOppHealth,
+            stars = 0,
+            combatPhase = CombatPhase.OBSERVE
         )
-
-        dustyAI.prepareNextAttack()
+        return if (newOppHealth <= 0) next.copy(fightOver = true, playerWon = true) else next
     }
+}
+
+// ─── Player actions ────────────────────────────────────────────────────────
+
+enum class PlayerAction {
+    DODGE_LEFT,
+    DODGE_RIGHT,
+    JAB,
+    BODY_BLOW,
+    STAR_PUNCH
+}
+
+// ─── Opponent AI contract ──────────────────────────────────────────────────
+
+interface OpponentPattern {
+    fun tick(state: FightState, nowMs: Long): FightState
 }
