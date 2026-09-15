@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fritz's Ascent - NES Punch-Out!! Clone</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            background-color: #0d0d0d;
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        /* CRT Scanline Effect */
+        body::after {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 999;
+            background-size: 100% 3px, 3px 100%;
+            pointer-events: none;
+        }
+        
+        #game-container {
+            width: 100%;
+            max-width: 480px;
+            height: 100vh;
+            max-height: 850px;
+            background: #12121c;
+            border: 4px solid #333;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+        /* Screens */
+        .screen {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            padding: 16px;
+            justify-content: space-between;
+        }
+        .screen.active {
+            display: flex;
+        }
+
+        /* Menu Screen */
+        .menu-title {
+            text-align: center;
+            font-size: 32px;
+            font-weight: bold;
+            color: #f1c40f;
+            text-shadow: 3px 3px #c0392b;
+            margin-top: 40px;
+            letter-spacing: 2px;
+        }
+        .menu-subtitle {
+            text-align: center;
+            font-size: 14px;
+            color: #bdc3c7;
+            margin-bottom: 30px;
+        }
+        .roster-select {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .fighter-card {
+            background: #2c3e50;
+            border: 2px solid #34495e;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .fighter-card:hover, .fighter-card.selected {
+            border-color: #f1c40f;
+            background: #34495e;
+        }
+        .fighter-name { font-size: 18px; font-weight: bold; color: #fff; }
+        .fighter-desc { font-size: 12px; color: #95a5a6; }
+
+        .btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: inherit;
+            border-radius: 6px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 4px #c0392b;
+            transition: all 0.1s;
+        }
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 #c0392b;
+        }
+
+        /* HUD & Top Bar */
+        .hud-header {
+            display: flex;
+            justify-content: space-between;
+            background: #1a1a24;
+            padding: 8px 12px;
+            border-bottom: 2px solid #333;
+            font-size: 13px;
+        }
+        .health-bar-container {
+            width: 42%;
+        }
+        .health-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+            font-weight: bold;
+        }
+        .health-bar {
+            width: 100%;
+            height: 16px;
+            background: #444;
+            border: 2px solid #222;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .health-fill {
+            height: 100%;
+            background: #2ecc71;
+            width: 100%;
+            transition: width 0.2s ease;
+        }
+        .health-fill.low { background: #e74c3c; }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 12px;
+            background: #0b0b10;
+            font-size: 12px;
+            border-bottom: 2px solid #222;
+        }
+        .star-container {
+            color: #f1c40f;
+            font-weight: bold;
+        }
+
+        /* Ring Arena Screen */
+        .ring-arena {
+            flex: 1;
+            background: linear-gradient(to bottom, #1b263b, #0d1b2a);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 2px solid #333;
+            overflow: hidden;
+        }
+        .ring-ropes {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 8px solid rgba(255,255,255,0.1);
+            pointer-events: none;
+        }
+        .opponent-sprite {
+            width: 160px;
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: transform 0.1s;
+        }
+        .opponent-avatar {
+            font-size: 70px;
+            filter: drop-shadow(0 5px 5px rgba(0,0,0,0.5));
+        }
+        .speech-bubble {
+            position: absolute;
+            top: -25px;
+            background: white;
+            color: black;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .speech-bubble.visible { opacity: 1; }
+
+        .ring-floor {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 60px;
+            background: #4a3525;
+            border-top: 4px solid #6b4c35;
+        }
+
+        /* Action Feedback */
+        #action-feedback {
+            position: absolute;
+            top: 20%;
+            font-size: 22px;
+            font-weight: bold;
+            text-shadow: 2px 2px #000;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+
+        /* Controls Panel */
+        .control-panel {
+            padding: 12px;
+            background: #161622;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .ctrl-btn {
+            background: #34495e;
+            color: white;
+            border: none;
+            padding: 14px 8px;
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 3px #1a252f;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .ctrl-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 0 #1a252f;
+        }
+        .ctrl-btn.primary { background: #2980b9; box-shadow: 0 3px #154360; }
+        .ctrl-btn.star {
+            background: #f39c12;
+            color: #000;
+            box-shadow: 0 3px #d68910;
+            grid-column: span 3;
+            font-size: 15px;
+        }
+        .ctrl-btn:disabled {
+            background: #555;
+            color: #888;
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Knockdown Overlay */
+        #knockdown-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            text-align: center;
+        }
+        .knockdown-count {
+            font-size: 80px;
+            color: #e74c3c;
+            font-weight: bold;
+            text-shadow: 0 0 20px #e74c3c;
+        }
+        .mash-prompt {
+            font-size: 16px;
+            color: #f1c40f;
+            margin-top: 15px;
+            animation: pulse 0.5s infinite alternate;
+        }
+        @keyframes pulse {
+            from { opacity: 0.5; }
+            to { opacity: 1; }
+        }
+
+        /* Result Screen */
+        .result-container {
+            text-align: center;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        .result-title {
+            font-size: 40px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .result-title.win { color: #2ecc71; text-shadow: 0 0 15px #2ecc71; }
+        .result-title.loss { color: #e74c3c; text-shadow: 0 0 15px #e74c3c; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+
+    <!-- MENU SCREEN -->
+    <div id="screen-menu" class="screen active">
+        <div>
+            <div class="menu-title">FRITZ'S ASCENT</div>
+            <div class="menu-subtitle">NES Punch-In!! Mobile Clone</div>
+            
+            <div style="font-size: 14px; color: #f1c40f; margin-bottom: 8px; font-weight: bold;">SELECT OPPONENT:</div>
+            <div class="roster-select">
+                <div class="fighter-card selected" onclick="selectFighter(0)" id="card-0">
+                    <div>
+                        <div class="fighter-name">DUSTY</div>
+                        <div class="fighter-desc">Tutorial Brawler | Slow telegraphed punches</div>
+                    </div>
+                    <span style="font-size: 24px;">🥊</span>
+                </div>
+                <div class="fighter-card" onclick="selectFighter(1)" id="card-1">
+                    <div>
+                        <div class="fighter-name">WES</div>
+                        <div class="fighter-desc">Whirlwind Wes | High-speed flurries & spins</div>
+                    </div>
+                    <span style="font-size: 24px;">🌪️</span>
+                </div>
+                <div class="fighter-card" onclick="selectFighter(2)" id="card-2">
+                    <div>
+                        <div class="fighter-name">KAINE</div>
+                        <div class="fighter-desc">King Kaine | Champion-tier 0.15s micro-tells</div>
+                    </div>
+                    <span style="font-size: 24px;">👑</span>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn" onclick="startFight()">START FIGHT</button>
+    </div>
+
+    <!-- FIGHT SCREEN -->
+    <div id="screen-fight" class="screen" style="padding: 0;">
+        <!-- HUD Header -->
+        <div class="hud-header">
+            <div class="health-bar-container">
+                <div class="health-label">
+                    <span>FRITZ</span>
+                    <span id="fritz-hp-text">100/100</span>
+                </div>
+                <div class="health-bar">
+                    <div id="fritz-hp-fill" class="health-fill"></div>
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 10px; color: #aaa;">ROUND 1</div>
+                <div id="round-timer" style="font-size: 15px; font-weight: bold; color: #f1c40f;">2:00</div>
+            </div>
+            <div class="health-bar-container">
+                <div class="health-label">
+                    <span id="opponent-hud-name">DUSTY</span>
+                    <span id="opp-hp-text">100/100</span>
+                </div>
+                <div class="health-bar">
+                    <div id="opp-hp-fill" class="health-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div>CIRCUIT: <span id="stat-mode" style="color: #3498db;">MAIN</span></div>
+            <div class="star-container">STARS: <span id="stat-stars">⭐ 0</span> / 3</div>
+            <div>SCORE: <span id="stat-score">000000</span></div>
+        </div>
+
+        <!-- Ring Arena -->
+        <div class="ring-arena" id="ring-arena">
+            <div class="ring-ropes"></div>
+            <div id="action-feedback"></div>
+            
+            <div class="opponent-sprite" id="opponent-sprite">
+                <div id="speech-bubble" class="speech-bubble">Take that!</div>
+                <div id="opponent-avatar" class="opponent-avatar">🧍‍♂️</div>
+            </div>
+
+            <div class="ring-floor"></div>
+
+            <!-- Knockdown Overlay -->
+            <div id="knockdown-overlay">
+                <div style="font-size: 18px; color: #fff; margin-bottom: 10px;" id="knockdown-title">KNOCKDOWN!</div>
+                <div class="knockdown-count" id="knockdown-count">1</div>
+                <div class="mash-prompt" id="mash-prompt">MASH ANY BUTTON OR TAP TO GET UP!</div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <button class="ctrl-btn" onclick="playerAction('dodge_left')">
+                <span>◀</span> Dodge L
+            </button>
+            <button class="ctrl-btn" onclick="playerAction('duck')">
+                <span>▼</span> Duck
+            </button>
+            <button class="ctrl-btn" onclick="playerAction('dodge_right')">
+                <span>▶</span> Dodge R
+            </button>
+            <button class="ctrl-btn primary" onclick="playerAction('counter_left')">
+                <span>🥊</span> L Counter
+            </button>
+            <button class="ctrl-btn primary" onclick="playerAction('counter_right')">
+                <span>🥊</span> R Counter
+            </button>
+            <button class="ctrl-btn" onclick="playerAction('block')">
+                <span>🛡️</span> Block Low
+            </button>
+            <button class="ctrl-btn star" id="btn-star-punch" onclick="playerAction('star_punch')" disabled>
+                ⭐ STAR PUNCH (0/3) ⭐
+            </button>
+        </div>
+    </div>
+
+    <!-- RESULT SCREEN -->
+    <div id="screen-result" class="screen">
+        <div class="result-container">
+            <div id="result-title" class="result-title win">VICTORY!</div>
+            <div id="result-desc" style="font-size: 16px; color: #bdc3c7; margin-bottom: 30px;">
+                You defeated Dusty with exceptional timing!
+            </div>
+            <button class="btn" onclick="returnToMenu()">MAIN MENU</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // --- Audio Synthesizer (Web Audio API) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playTone(freq, duration, type = 'square', vol = 0.1) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function soundHit() { playTone(120, 0.1, 'sawtooth', 0.15); }
+    function soundPunch() { playTone(250, 0.08, 'square', 0.1); }
+    function soundStar() { playTone(600, 0.15, 'sine', 0.2); setTimeout(() => playTone(900, 0.2, 'sine', 0.2), 100); }
+    function soundBell() { playTone(880, 0.8, 'sine', 0.3); }
+
+    // --- Game State ---
+    const opponents = [
+        { name: "DUSTY", emoji: "🤠", hp: 100, maxHp: 100, tellTime: 1000, interval: 2600, desc: "Tutorial Brawler" },
+        { name: "WES", emoji: "🌪️", hp: 130, maxHp: 130, tellTime: 500, interval: 2000, desc: "Whirlwind Wes" },
+        { name: "KAINE", emoji: "👑", hp: 180, maxHp: 180, tellTime: 250, interval: 1500, desc: "King Kaine Striker" }
+    ];
+
+    let selectedOpponentIndex = 0;
+    let gameState = {
+        fritzHp: 100,
+        fritzMaxHp: 100,
+        oppHp: 100,
+        oppMaxHp: 100,
+        stars: 0,
+        score: 0,
+        phase: 'IDLE', // IDLE, TELL, EVADE, PUNISH, DOWN
+        timer: 120,
+        timerInterval: null,
+        aiTimeout: null,
+        currentOpponent: null,
+        isDown: false,
+        knockdownCount: 0,
+        mashCount: 0
+    };
+
+    function selectFighter(index) {
+        selectedOpponentIndex = index;
+        document.querySelectorAll('.fighter-card').forEach((card, idx) => {
+            card.classList.toggle('selected', idx === index);
+        });
+        soundPunch();
+    }
+
+    function startFight() {
+        soundBell();
+        const opp = opponents[selectedOpponentIndex];
+        gameState.currentOpponent = { ...opp };
+        gameState.fritzHp = 100;
+        gameState.oppHp = opp.hp;
+        gameState.oppMaxHp = opp.maxHp;
+        gameState.stars = 0;
+        gameState.score = 0;
+        gameState.timer = 120;
+        gameState.phase = 'OBSERVE';
+        gameState.isDown = false;
+
+        document.getElementById('opponent-hud-name').innerText = opp.name;
+        document.getElementById('opponent-avatar').innerText = opp.emoji;
+        
+        switchScreen('screen-fight');
+        updateUI();
+
+        // Start AI Loop
+        scheduleNextAttack();
+
+        // Start Round Clock
+        if (gameState.timerInterval) clearInterval(gameState.timerInterval);
+        gameState.timerInterval = setInterval(() => {
+            if (gameState.phase !== 'DOWN' && !gameState.isDown) {
+                gameState.timer--;
+                const mins = Math.floor(gameState.timer / 60);
+                const secs = gameState.timer % 60;
+                document.getElementById('round-timer').innerText = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+                if (gameState.timer <= 0) {
+                    endFight(true, "Time Up - Decision Win!");
+                }
+            }
+        }, 1000);
+    }
+
+    function switchScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+    }
+
+    function updateUI() {
+        // Fritz HP
+        const fritzPct = Math.max(0, (gameState.fritzHp / gameState.fritzMaxHp) * 100);
+        const fritzFill = document.getElementById('fritz-hp-fill');
+        fritzFill.style.width = fritzPct + '%';
+        fritzFill.classList.toggle('low', fritzPct < 30);
+        document.getElementById('fritz-hp-text').innerText = `${gameState.fritzHp}/${gameState.fritzMaxHp}`;
+
+        // Opponent HP
+        const oppPct = Math.max(0, (gameState.oppHp / gameState.oppMaxHp) * 100);
+        const oppFill = document.getElementById('opp-hp-fill');
+        oppFill.style.width = oppPct + '%';
+        oppFill.classList.toggle('low', oppPct < 30);
+        document.getElementById('opp-hp-text').innerText = `${gameState.oppHp}/${gameState.oppMaxHp}`;
+
+        // Stars
+        document.getElementById('stat-stars').innerText = `⭐ ${gameState.stars}`;
+        const starBtn = document.getElementById('btn-star-punch');
+        starBtn.disabled = gameState.stars === 0;
+        starBtn.innerText = gameState.stars > 0 ? `⭐ UNLEASH STAR PUNCH (${gameState.stars}/3) ⭐` : `⭐ STAR PUNCH (0/3) ⭐`;
+
+        // Score
+        document.getElementById('stat-score').innerText = String(gameState.score).padStart(6, '0');
+    }
+
+    // --- AI Opponent Attack Loop ---
+    function scheduleNextAttack() {
+        if (gameState.oppHp <= 0 || gameState.fritzHp <= 0) return;
+
+        const opp = gameState.currentOpponent;
+        const delay = opp.interval + Math.random() * 800;
+
+        gameState.aiTimeout = setTimeout(() => {
+            if (gameState.isDown || gameState.oppHp <= 0) return;
+
+            // Opponent enters TELL phase
+            gameState.phase = 'TELL';
+            showSpeechBubble("!");
+            playTone(300, 0.1);
+            
+            // Visual tell tremor
+            const sprite = document.getElementById('opponent-sprite');
+            sprite.style.transform = "scale(1.08) translateY(-10px)";
+
+            // Window opens for dodge
+            setTimeout(() => {
+                if (gameState.isDown) return;
+                gameState.phase = 'EVADE';
+                
+                // If player doesn't dodge in time, opponent strikes!
+                gameState.attackResolveTimeout = setTimeout(() => {
+                    if (gameState.phase === 'EVADE') {
+                        // HIT! Player failed to dodge
+                        takePlayerDamage(18, "OUCH! Clean Hit!");
+                        resetPhase();
+                    }
+                }, opp.tellTime);
+
+            }, 200);
+
+        }, delay);
+    }
+
+    function showSpeechBubble(text) {
+        const bubble = document.getElementById('speech-bubble');
+        bubble.innerText = text;
+        bubble.classList.add('visible');
+        setTimeout(() => bubble.classList.remove('visible'), 800);
+    }
+
+    function showFeedback(text, color = '#f1c40f') {
+        const fb = document.getElementById('action-feedback');
+        fb.innerText = text;
+        fb.style.color = color;
+        fb.style.opacity = 1;
+        setTimeout(() => { fb.style.opacity = 0; }, 600);
+    }
+
+    // --- Player Actions ---
+    function playerAction(action) {
+        if (gameState.isDown) {
+            handleMash();
+            return;
+        }
+
+        const sprite = document.getElementById('opponent-sprite');
+
+        if (action === 'dodge_left' || action === 'dodge_right' || action === 'duck') {
+            if (gameState.phase === 'EVADE' || gameState.phase === 'TELL') {
+                // Perfect Dodge! Earn Star & open punish window
+                clearTimeout(gameState.attackResolveTimeout);
+                gameState.phase = 'PUNISH';
+                gameState.stars = Math.min(3, gameState.stars + 1);
+                soundStar();
+                showFeedback("DODGE! PUNISH OPEN!", "#2ecc71");
+                sprite.style.transform = "scale(0.95) translateY(10px)";
+                setTimeout(() => sprite.style.transform = "none", 300);
+                updateUI();
+            } else {
+                // Mistimed dodge
+                showFeedback("WHIFF!", "#e74c3c");
+            }
+        } 
+        else if (action === 'counter_left' || action === 'counter_right' || action === 'block') {
+            if (gameState.phase === 'PUNISH') {
+                // Successful counter hit!
+                const dmg = 22;
+                gameState.oppHp -= dmg;
+                gameState.score += 500;
+                soundPunch();
+                showFeedback(`COUNTER! -${dmg} HP`, "#3498db");
+                sprite.style.transform = "scale(1.1) rotate(5deg)";
+                setTimeout(() => sprite.style.transform = "none", 200);
+                
+                checkWinCondition();
+                resetPhase();
+            } else {
+                showFeedback("BLOCKED / MISSED!", "#e74c3c");
+            }
+        }
+        else if (action === 'star_punch') {
+            if (gameState.stars > 0) {
+                const dmg = 55 * gameState.stars;
+                gameState.stars = 0;
+                gameState.oppHp -= dmg;
+                gameState.score += 1500;
+                soundStar();
+                soundHit();
+                showFeedback(`⭐ STAR PUNCH! -${dmg} HP ⭐`, "#f1c40f");
+                sprite.style.transform = "scale(1.2)";
+                setTimeout(() => sprite.style.transform = "none", 400);
+
+                checkWinCondition();
+                resetPhase();
+            }
+        }
+    }
+
+    function resetPhase() {
+        gameState.phase = 'OBSERVE';
+        document.getElementById('opponent-sprite').style.transform = "none";
+        updateUI();
+        scheduleNextAttack();
+    }
+
+    function takePlayerDamage(damage, msg) {
+        gameState.fritzHp -= damage;
+        soundHit();
+        showFeedback(msg, "#e74c3c");
+        updateUI();
+
+        if (gameState.fritzHp <= 0) {
+            triggerKnockdown();
+        }
+    }
+
+    // --- Knockdown & Get-Up FSM ---
+    function triggerKnockdown() {
+        gameState.isDown = true;
+        gameState.phase = 'DOWN';
+        clearTimeout(gameState.aiTimeout);
+        clearTimeout(gameState.attackResolveTimeout);
+
+        document.getElementById('knockdown-overlay').style.display = 'flex';
+        gameState.knockdownCount = 1;
+        gameState.mashCount = 0;
+        document.getElementById('knockdown-count').innerText = gameState.knockdownCount;
+
+        // Referee count interval
+        let count = 1;
+        gameState.refereeInterval = setInterval(() => {
+            count++;
+            if (count > 10) {
+                clearInterval(gameState.refereeInterval);
+                endFight(false, "Knocked out! Referee count of 10.");
+            } else {
+                gameState.knockdownCount = count;
+                document.getElementById('knockdown-count').innerText = count;
+                playTone(150, 0.2);
+            }
+        }, 900);
+    }
+
+    function handleMash() {
+        if (!gameState.isDown) return;
+        gameState.mashCount++;
+        soundPunch();
+        
+        // Flash count
+        const countEl = document.getElementById('knockdown-count');
+        countEl.style.transform = "scale(1.2)";
+        setTimeout(() => countEl.style.transform = "none", 100);
+
+        // 12 mashes gets Fritz back up!
+        if (gameState.mashCount >= 10) {
+            clearInterval(gameState.refereeInterval);
+            gameState.isDown = false;
+            gameState.fritzHp = 35; // Get up with partial HP
+            document.getElementById('knockdown-overlay').style.display = 'none';
+            showFeedback("STAYED IN THE FIGHT!", "#2ecc71");
+            updateUI();
+            scheduleNextAttack();
+        }
+    }
+
+    function checkWinCondition() {
+        if (gameState.oppHp <= 0) {
+            clearTimeout(gameState.aiTimeout);
+            clearTimeout(gameState.attackResolveTimeout);
+            clearInterval(gameState.timerInterval);
+            setTimeout(() => {
+                endFight(true, `Victory! You defeated ${gameState.currentOpponent.name}!`);
+            }, 500);
+        }
+    }
+
+    function endFight(won, message) {
+        soundBell();
+        switchScreen('screen-result');
+        const titleEl = document.getElementById('result-title');
+        titleEl.innerText = won ? "VICTORY!" : "DEFEAT";
+        titleEl.className = "result-title " + (won ? "win" : "loss");
+        document.getElementById('result-desc').innerText = message;
+    }
+
+    function returnToMenu() {
+        switchScreen('screen-menu');
+    }
+
+    // Keyboard support for testing
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'a') playerAction('dodge_left');
+        if (e.key === 'ArrowRight' || e.key === 'd') playerAction('dodge_right');
+        if (e.key === 'ArrowDown' || e.key === 's') playerAction('duck');
+        if (e.key === 'j' || e.key === ' ') playerAction('counter_left');
+        if (e.key === 'k') playerAction('star_punch');
+        if (e.key === 'q') playerAction('block');
+    });
+
+    // Allow tapping knockdown overlay to mash
+    document.getElementById('knockdown-overlay').addEventListener('click', handleMash);
+</script>
+
+</body>
+</html>
